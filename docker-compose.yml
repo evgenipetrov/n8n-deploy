@@ -1,0 +1,360 @@
+# n8n Enterprise Docker Compose Configuration
+# Optimized for 32 GB RAM bare metal server
+# Memory Budget: ~22 GB allocated, ~10 GB headroom for OS and other processes
+
+volumes:
+  n8n_data:
+  postgres_data:
+  caddy_data:
+  ollama_storage:
+  qdrant_storage:
+  redis_data:
+
+networks:
+  web:
+    driver: bridge
+    driver_opts:
+      com.docker.network.bridge.name: br-web
+    ipam:
+      config:
+        - subnet: 172.19.0.0/16
+
+# =============================================================================
+# YAML Anchors - Shared Configuration Templates
+# =============================================================================
+
+x-n8n: &service-n8n
+  image: docker.n8n.io/n8nio/n8n:${N8N_VERSION:-latest}
+  networks: ["web"]
+  dns:
+    - 8.8.8.8
+    - 8.8.4.4
+    - 1.1.1.1
+  environment:
+    # Queue Mode Configuration
+    - EXECUTIONS_MODE=queue
+    - QUEUE_BULL_REDIS_HOST=redis
+    - QUEUE_HEALTH_CHECK_ACTIVE=true
+    # Database Configuration
+    - DB_TYPE=postgresdb
+    - DB_POSTGRESDB_HOST=postgres
+    - DB_POSTGRESDB_PORT=5432
+    - DB_POSTGRESDB_DATABASE=${POSTGRES_DB}
+    - DB_POSTGRESDB_USER=${POSTGRES_USER}
+    - DB_POSTGRESDB_PASSWORD=${POSTGRES_PASSWORD}
+    # Database Connection Pool (optimized for concurrent connections)
+    - DB_POSTGRESDB_POOL_SIZE=10
+    - DB_POSTGRESDB_CONNECTION_TIMEOUT=30000
+    - DB_POSTGRESDB_IDLE_CONNECTION_TIMEOUT=60000
+    # Execution Data Pruning (14 days retention, max 10000 executions)
+    - EXECUTIONS_DATA_PRUNE=true
+    - EXECUTIONS_DATA_MAX_AGE=336
+    - EXECUTIONS_DATA_PRUNE_MAX_COUNT=10000
+    - EXECUTIONS_DATA_PRUNE_HARD_DELETE_INTERVAL=15
+    - EXECUTIONS_DATA_PRUNE_SOFT_DELETE_INTERVAL=60
+    # n8n Settings
+    - N8N_DIAGNOSTICS_ENABLED=false
+    - N8N_PERSONALIZATION_ENABLED=false
+    - N8N_ENCRYPTION_KEY=${N8N_ENCRYPTION_KEY}
+    - N8N_USER_MANAGEMENT_JWT_SECRET=${N8N_USER_MANAGEMENT_JWT_SECRET}
+    - OLLAMA_HOST=${OLLAMA_HOST:-ollama:11434}
+    - N8N_HOST=${SUBDOMAIN}.${DOMAIN_NAME}
+    - N8N_PORT=5678
+    - N8N_PROTOCOL=https
+    - WEBHOOK_URL=https://${SUBDOMAIN}.${DOMAIN_NAME}/
+    - GENERIC_TIMEZONE=${GENERIC_TIMEZONE}
+  env_file:
+    - .env
+
+x-ollama: &service-ollama
+  image: ollama/ollama:latest
+  container_name: ollama
+  networks: ["web"]
+  restart: unless-stopped
+  ports:
+    - 11434:11434
+  volumes:
+    - ollama_storage:/root/.ollama
+
+x-init-ollama: &init-ollama
+  image: ollama/ollama:latest
+  networks: ["web"]
+  container_name: ollama-pull-llama
+  volumes:
+    - ollama_storage:/root/.ollama
+  entrypoint: /bin/sh
+  environment:
+    - OLLAMA_HOST=ollama:11434
+  command:
+    - "-c"
+    - "sleep 3; ollama pull llama3.2"
+
+# =============================================================================
+# Services
+# =============================================================================
+
+services:
+  # ---------------------------------------------------------------------------
+  # PostgreSQL 16 - Tuned for 32 GB RAM server
+  # Memory: 12 GB limit, 10 GB reservation
+  # ---------------------------------------------------------------------------
+  postgres:
+    image: postgres:16
+    hostname: postgres
+    container_name: postgres
+    restart: unless-stopped
+    networks: ["web"]
+    environment:
+      - POSTGRES_USER=${POSTGRES_USER}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
+      - POSTGRES_DB=${POSTGRES_DB}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./postgres/init:/docker-entrypoint-initdb.d:ro
+    command:
+      - "postgres"
+      - "-c"
+      - "shared_buffers=8GB"
+      - "-c"
+      - "effective_cache_size=24GB"
+      - "-c"
+      - "work_mem=256MB"
+      - "-c"
+      - "maintenance_work_mem=1GB"
+      - "-c"
+      - "random_page_cost=1.1"
+      - "-c"
+      - "checkpoint_completion_target=0.9"
+      - "-c"
+      - "wal_buffers=64MB"
+      - "-c"
+      - "max_connections=100"
+    deploy:
+      resources:
+        limits:
+          memory: 12g
+        reservations:
+          memory: 10g
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -h localhost -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  # ---------------------------------------------------------------------------
+  # Redis 7 - Queue backend with AOF persistence
+  # Memory: 1.5 GB limit, 1 GB reservation
+  # ---------------------------------------------------------------------------
+  redis:
+    image: redis:7
+    hostname: redis
+    restart: unless-stopped
+    networks: ["web"]
+    volumes:
+      - redis_data:/data
+    command:
+      - "redis-server"
+      - "--maxmemory"
+      - "1gb"
+      - "--maxmemory-policy"
+      - "allkeys-lru"
+      - "--appendonly"
+      - "yes"
+      - "--appendfsync"
+      - "everysec"
+    deploy:
+      resources:
+        limits:
+          memory: 1536m
+        reservations:
+          memory: 1g
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  # ---------------------------------------------------------------------------
+  # n8n Import - One-time credential and workflow import
+  # ---------------------------------------------------------------------------
+  n8n-import:
+    <<: *service-n8n
+    hostname: n8n-import
+    container_name: n8n-import
+    entrypoint: /bin/sh
+    command:
+      - "-c"
+      - "n8n import:credentials --separate --input=/demo-data/credentials && n8n import:workflow --separate --input=/demo-data/workflows"
+    volumes:
+      - ./n8n/demo-data:/demo-data
+    depends_on:
+      redis:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+
+  # ---------------------------------------------------------------------------
+  # n8n Main Instance - UI and API server
+  # Memory: 4 GB limit, 2 GB reservation
+  # ---------------------------------------------------------------------------
+  n8n:
+    <<: *service-n8n
+    hostname: n8n
+    container_name: n8n
+    restart: unless-stopped
+    depends_on:
+      redis:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+      n8n-import:
+        condition: service_completed_successfully
+    volumes:
+      - n8n_data:/home/node/.n8n
+      - ./n8n/demo-data:/demo-data
+    deploy:
+      resources:
+        limits:
+          memory: 4g
+        reservations:
+          memory: 2g
+    healthcheck:
+      test: ["CMD-SHELL", "wget --no-verbose --tries=1 --spider http://localhost:5678/healthz || exit 1"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  # ---------------------------------------------------------------------------
+  # n8n Workers - Scalable execution workers (3 replicas)
+  # Memory: 2 GB limit, 1 GB reservation per worker
+  # ---------------------------------------------------------------------------
+  n8n-worker:
+    <<: *service-n8n
+    hostname: n8n-worker
+    command: worker
+    restart: unless-stopped
+    environment:
+      # Inherit from x-n8n anchor, add worker-specific settings
+      - EXECUTIONS_MODE=queue
+      - QUEUE_BULL_REDIS_HOST=redis
+      - QUEUE_HEALTH_CHECK_ACTIVE=true
+      - QUEUE_WORKER_LOCK_DURATION=60000
+      - DB_TYPE=postgresdb
+      - DB_POSTGRESDB_HOST=postgres
+      - DB_POSTGRESDB_PORT=5432
+      - DB_POSTGRESDB_DATABASE=${POSTGRES_DB}
+      - DB_POSTGRESDB_USER=${POSTGRES_USER}
+      - DB_POSTGRESDB_PASSWORD=${POSTGRES_PASSWORD}
+      - DB_POSTGRESDB_POOL_SIZE=10
+      - DB_POSTGRESDB_CONNECTION_TIMEOUT=30000
+      - DB_POSTGRESDB_IDLE_CONNECTION_TIMEOUT=60000
+      - EXECUTIONS_DATA_PRUNE=true
+      - EXECUTIONS_DATA_MAX_AGE=336
+      - EXECUTIONS_DATA_PRUNE_MAX_COUNT=10000
+      - EXECUTIONS_DATA_PRUNE_HARD_DELETE_INTERVAL=15
+      - EXECUTIONS_DATA_PRUNE_SOFT_DELETE_INTERVAL=60
+      - N8N_DIAGNOSTICS_ENABLED=false
+      - N8N_PERSONALIZATION_ENABLED=false
+      - N8N_ENCRYPTION_KEY=${N8N_ENCRYPTION_KEY}
+      - N8N_USER_MANAGEMENT_JWT_SECRET=${N8N_USER_MANAGEMENT_JWT_SECRET}
+      - OLLAMA_HOST=${OLLAMA_HOST:-ollama:11434}
+      - N8N_HOST=${SUBDOMAIN}.${DOMAIN_NAME}
+      - N8N_PORT=5678
+      - N8N_PROTOCOL=https
+      - WEBHOOK_URL=https://${SUBDOMAIN}.${DOMAIN_NAME}/
+      - GENERIC_TIMEZONE=${GENERIC_TIMEZONE}
+    depends_on:
+      redis:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+      n8n:
+        condition: service_healthy
+    volumes:
+      - n8n_data:/home/node/.n8n
+    deploy:
+      replicas: 3
+      resources:
+        limits:
+          memory: 2g
+        reservations:
+          memory: 1g
+
+  # ---------------------------------------------------------------------------
+  # Caddy - Reverse proxy with automatic HTTPS
+  # ---------------------------------------------------------------------------
+  caddy:
+    image: caddy:latest
+    hostname: caddy
+    container_name: caddy
+    restart: unless-stopped
+    networks: ["web"]
+    depends_on:
+      - n8n
+    env_file:
+      - .env
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - caddy_data:/data
+      - ./caddy:/etc/caddy
+
+  # ---------------------------------------------------------------------------
+  # Qdrant - Vector database for embeddings
+  # ---------------------------------------------------------------------------
+  qdrant:
+    image: qdrant/qdrant
+    hostname: qdrant
+    container_name: qdrant
+    networks: ["web"]
+    restart: unless-stopped
+    ports:
+      - 6333:6333
+    volumes:
+      - qdrant_storage:/qdrant/storage
+
+  # ---------------------------------------------------------------------------
+  # Ollama - Local LLM inference (profile-based deployment)
+  # ---------------------------------------------------------------------------
+  ollama-cpu:
+    profiles: ["cpu"]
+    <<: *service-ollama
+
+  ollama-gpu:
+    profiles: ["gpu-nvidia"]
+    <<: *service-ollama
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+
+  ollama-gpu-amd:
+    profiles: ["gpu-amd"]
+    <<: *service-ollama
+    image: ollama/ollama:rocm
+    devices:
+      - "/dev/kfd"
+      - "/dev/dri"
+
+  ollama-pull-llama-cpu:
+    profiles: ["cpu"]
+    <<: *init-ollama
+    depends_on:
+      - ollama-cpu
+
+  ollama-pull-llama-gpu:
+    profiles: ["gpu-nvidia"]
+    <<: *init-ollama
+    depends_on:
+      - ollama-gpu
+
+  ollama-pull-llama-gpu-amd:
+    profiles: [gpu-amd]
+    <<: *init-ollama
+    image: ollama/ollama:rocm
+    depends_on:
+     - ollama-gpu-amd

@@ -1,0 +1,129 @@
+# =============================================================================
+# Docker Compose Override Example
+# =============================================================================
+# This file demonstrates how to customize the n8n deployment for your specific
+# environment without modifying the main docker-compose.yml file.
+#
+# Usage:
+#   1. Copy this file to docker-compose.override.yml
+#   2. Uncomment and modify the sections you need
+#   3. Docker Compose automatically merges both files on startup
+#
+# The override file is automatically detected by Docker Compose.
+# Run: docker compose up -d
+# =============================================================================
+
+services:
+  # ---------------------------------------------------------------------------
+  # PostgreSQL Memory Adjustments
+  # ---------------------------------------------------------------------------
+  # Uncomment to adjust PostgreSQL memory for smaller servers (e.g., 16 GB RAM)
+  # postgres:
+  #   command:
+  #     - "postgres"
+  #     - "-c"
+  #     - "shared_buffers=4GB"
+  #     - "-c"
+  #     - "effective_cache_size=12GB"
+  #     - "-c"
+  #     - "work_mem=128MB"
+  #     - "-c"
+  #     - "maintenance_work_mem=512MB"
+  #     - "-c"
+  #     - "random_page_cost=1.1"
+  #     - "-c"
+  #     - "checkpoint_completion_target=0.9"
+  #     - "-c"
+  #     - "wal_buffers=64MB"
+  #     - "-c"
+  #     - "max_connections=100"
+  #   deploy:
+  #     resources:
+  #       limits:
+  #         memory: 6g
+  #       reservations:
+  #         memory: 5g
+
+  # ---------------------------------------------------------------------------
+  # n8n Worker Replica Count Adjustment
+  # ---------------------------------------------------------------------------
+  # Uncomment to change the number of worker replicas
+  # n8n-worker:
+  #   deploy:
+  #     replicas: 2  # Reduce to 2 workers for smaller workloads
+  #     resources:
+  #       limits:
+  #         memory: 2g
+  #       reservations:
+  #         memory: 1g
+
+  # ---------------------------------------------------------------------------
+  # n8n Main Instance Memory Adjustment
+  # ---------------------------------------------------------------------------
+  # Uncomment to adjust n8n main instance resources
+  # n8n:
+  #   deploy:
+  #     resources:
+  #       limits:
+  #         memory: 2g
+  #       reservations:
+  #         memory: 1g
+
+  # ---------------------------------------------------------------------------
+  # Redis Memory Adjustment
+  # ---------------------------------------------------------------------------
+  # Uncomment to adjust Redis resources for smaller deployments
+  # redis:
+  #   command:
+  #     - "redis-server"
+  #     - "--maxmemory"
+  #     - "512mb"
+  #     - "--maxmemory-policy"
+  #     - "allkeys-lru"
+  #     - "--appendonly"
+  #     - "yes"
+  #     - "--appendfsync"
+  #     - "everysec"
+  #   deploy:
+  #     resources:
+  #       limits:
+  #         memory: 768m
+  #       reservations:
+  #         memory: 512m
+
+  # ---------------------------------------------------------------------------
+  # Execution Pruning Customization
+  # ---------------------------------------------------------------------------
+  # Uncomment to change execution retention policy
+  # n8n:
+  #   environment:
+  #     - EXECUTIONS_DATA_MAX_AGE=168  # 7 days instead of 14
+  #     - EXECUTIONS_DATA_PRUNE_MAX_COUNT=5000  # Keep fewer executions
+
+  # ---------------------------------------------------------------------------
+  # Development Mode - Disable Pruning
+  # ---------------------------------------------------------------------------
+  # Uncomment for development environments where you want to keep all executions
+  # n8n:
+  #   environment:
+  #     - EXECUTIONS_DATA_PRUNE=false
+
+# =============================================================================
+# Memory Scaling Guide
+# =============================================================================
+# Adjust resources based on your server's available RAM:
+#
+# 16 GB Server:
+#   - PostgreSQL: 6 GB limit, 5 GB reservation, shared_buffers=4GB
+#   - Redis: 768 MB limit, 512 MB reservation, maxmemory=512mb
+#   - n8n Main: 2 GB limit, 1 GB reservation
+#   - n8n Workers: 2 replicas x 1.5 GB limit each
+#   - Total: ~12 GB, leaving ~4 GB for OS
+#
+# 64 GB Server:
+#   - PostgreSQL: 24 GB limit, 20 GB reservation, shared_buffers=16GB
+#   - Redis: 2 GB limit, 1.5 GB reservation, maxmemory=1.5gb
+#   - n8n Main: 8 GB limit, 4 GB reservation
+#   - n8n Workers: 5 replicas x 3 GB limit each
+#   - Total: ~52 GB, leaving ~12 GB for OS
+# =============================================================================
