@@ -40,6 +40,13 @@ Enterprise-grade Docker Compose deployment for n8n with PostgreSQL, Redis, Caddy
 
 Optimized for a 32 GB RAM server (~22 GB allocated, ~10 GB headroom).
 
+## 📚 Documentation
+
+- **[DEPLOYMENT.md](DEPLOYMENT.md)** - Complete deployment guide and checklist
+- **[OPERATIONS.md](OPERATIONS.md)** - Day-to-day operational procedures
+- **[SECURITY.md](SECURITY.md)** - Security audit and hardening recommendations
+- **[QUICK-REFERENCE.md](QUICK-REFERENCE.md)** - Command cheat sheet and troubleshooting
+
 ## Quick Start
 
 1. **Copy environment template:**
@@ -53,12 +60,39 @@ Optimized for a 32 GB RAM server (~22 GB allocated, ~10 GB headroom).
    - Encryption keys
    - Timezone
 
+   See [DEPLOYMENT.md](DEPLOYMENT.md) for detailed instructions.
+
 3. **Start services:**
    ```bash
    docker compose up -d
    ```
 
-4. **Access n8n** at `https://your-subdomain.your-domain.com`
+4. **Check health:**
+   ```bash
+   ./scripts/health-check.sh
+   ```
+
+5. **Access n8n** at `https://your-subdomain.your-domain.com`
+
+For a complete deployment checklist, see [DEPLOYMENT.md](DEPLOYMENT.md).
+
+## 🛠️ Helper Scripts
+
+Operational scripts in `scripts/` directory:
+
+```bash
+# Check service health and resource usage
+./scripts/health-check.sh
+
+# Create backup of database and n8n data
+./scripts/backup.sh
+
+# Restore from backup
+./scripts/restore.sh backups/<directory>
+
+# Update all Docker images safely
+./scripts/update.sh
+```
 
 ## Common Commands
 
@@ -84,6 +118,8 @@ docker compose logs -f n8n-worker
 # Check service status
 docker compose ps
 ```
+
+For more commands and troubleshooting, see [QUICK-REFERENCE.md](QUICK-REFERENCE.md).
 
 ## GPU Support (Ollama)
 
@@ -127,14 +163,62 @@ n8n-deploy/
 ├── docker-compose.yml          # Main orchestration
 ├── docker-compose.override.yml.example
 ├── .env.sample                  # Environment template
+├── DEPLOYMENT.md               # Deployment guide and checklist
+├── OPERATIONS.md               # Daily operations guide
+├── SECURITY.md                 # Security recommendations
+├── QUICK-REFERENCE.md          # Command cheat sheet
+├── scripts/                     # Helper scripts
+│   ├── health-check.sh         # Service health monitoring
+│   ├── backup.sh               # Backup creation
+│   ├── restore.sh              # Backup restoration
+│   └── update.sh               # Image updates
 ├── caddy/
 │   └── Caddyfile               # Reverse proxy config
 ├── n8n/
 │   └── demo-data/              # Sample workflows/credentials
-└── postgres/
-    └── init/
-        └── 01-create-indexes.sql  # Performance indexes
+├── postgres/
+│   └── init/
+│       └── 01-create-indexes.sql  # Performance indexes
+└── agent-os/                    # Product planning (optional)
+    └── product/
+        ├── mission.md           # Product vision
+        ├── roadmap.md           # Feature roadmap
+        └── tech-stack.md        # Technology stack
 ```
+
+## 🔒 Security
+
+This deployment includes several security considerations. For a complete security audit and hardening recommendations, see [SECURITY.md](SECURITY.md).
+
+**Quick security wins:**
+1. Change all default passwords in `.env`
+2. Use strong encryption keys (generate with `openssl rand -hex 32`)
+3. Configure firewall to restrict access to ports 80/443 only
+4. Enable automatic backups (see `scripts/backup.sh`)
+5. Keep images updated regularly (`./scripts/update.sh`)
+
+## 📊 Monitoring and Maintenance
+
+**Health Monitoring:**
+```bash
+./scripts/health-check.sh
+```
+
+**Regular Backups:**
+```bash
+# Manual backup
+./scripts/backup.sh
+
+# Automated (add to crontab)
+0 2 * * * cd /path/to/n8n-deploy && ./scripts/backup.sh
+```
+
+**Updates:**
+```bash
+./scripts/update.sh
+```
+
+For complete operational procedures, see [OPERATIONS.md](OPERATIONS.md).
 
 ## License
 

@@ -1,0 +1,117 @@
+# =============================================================================
+# n8n Deployment - Git Ignore Rules
+# =============================================================================
+
+# Environment and Secrets
+# -----------------------------------------------------------------------------
+.env
+.env.*
+!.env.sample
+!.env.example
+
+# Docker Override (may contain sensitive customizations)
+docker-compose.override.yml
+
+# Docker Volumes and Data
+# -----------------------------------------------------------------------------
+# These are managed by Docker and should never be committed
+postgres/data/
+n8n/data/
+redis/data/
+caddy/data/
+ollama/storage/
+qdrant/storage/
+
+# n8n User Data
+# -----------------------------------------------------------------------------
+n8n/.n8n/
+n8n/backups/
+
+# Logs
+# -----------------------------------------------------------------------------
+*.log
+logs/
+*.log.*
+
+# OS Generated Files
+# -----------------------------------------------------------------------------
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+Desktop.ini
+
+# IDE and Editor Files
+# -----------------------------------------------------------------------------
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.project
+.classpath
+.settings/
+*.sublime-project
+*.sublime-workspace
+
+# Temporary Files
+# -----------------------------------------------------------------------------
+*.tmp
+*.temp
+.cache/
+tmp/
+
+# Backup Files
+# -----------------------------------------------------------------------------
+*.backup
+*.bak
+*.old
+
+# SSL/TLS Certificates (if locally generated)
+# -----------------------------------------------------------------------------
+*.pem
+*.key
+*.crt
+*.csr
+!caddy/Caddyfile
+
+# Agent OS Working Files
+# -----------------------------------------------------------------------------
+# Spec folders are working documents - decide if you want to keep them in git
+agent-os/specs/
+agent-os/.cache/
+
+# Node.js (if using custom nodes or local development)
+# -----------------------------------------------------------------------------
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+package-lock.json
+yarn.lock
+
+# Python (if using Python-based tools)
+# -----------------------------------------------------------------------------
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+.Python
+venv/
+env/
+ENV/
+
+# Monitoring and Observability (future additions)
+# -----------------------------------------------------------------------------
+prometheus/data/
+grafana/data/
+loki/data/
+
+# System and Runtime
+# -----------------------------------------------------------------------------
+.pid
+*.pid
+*.sock
