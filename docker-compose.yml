@@ -24,7 +24,11 @@ networks:
 # =============================================================================
 
 x-n8n: &service-n8n
-  image: docker.n8n.io/n8nio/n8n:${N8N_VERSION:-latest}
+  build:
+    context: ./n8n-custom
+    args:
+      N8N_VERSION: ${N8N_VERSION:-latest}
+  image: n8n-custom:latest
   networks: ["web"]
   dns:
     - 8.8.8.8

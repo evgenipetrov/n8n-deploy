@@ -84,6 +84,12 @@ tmp/
 agent-os/specs/
 agent-os/.cache/
 
+# Custom Docker Build Context
+# -----------------------------------------------------------------------------
+# Keep Dockerfile, ignore build artifacts
+n8n-custom/.dockerignore
+n8n-custom/node_modules/
+
 # Node.js (if using custom nodes or local development)
 # -----------------------------------------------------------------------------
 node_modules/
