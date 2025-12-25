@@ -24,11 +24,7 @@ networks:
 # =============================================================================
 
 x-n8n: &service-n8n
-  build:
-    context: ./n8n-custom
-    args:
-      N8N_VERSION: ${N8N_VERSION:-latest}
-  image: n8n-custom:latest
+  image: docker.n8n.io/n8nio/n8n:${N8N_VERSION:-latest}
   networks: ["web"]
   dns:
     - 8.8.8.8
@@ -362,3 +358,29 @@ services:
     image: ollama/ollama:rocm
     depends_on:
      - ollama-gpu-amd
+
+  # ---------------------------------------------------------------------------
+  # Python Task Runner - External mode (recommended for production)
+  # Handles Python code execution separately from main n8n instance
+  # ---------------------------------------------------------------------------
+  python-runner:
+    build:
+      context: ./python-runner
+    image: n8n-python-runner:latest
+    container_name: python-runner
+    hostname: python-runner
+    restart: unless-stopped
+    networks: ["web"]
+    environment:
+      - N8N_RUNNERS_ENABLED=python
+      - N8N_RUNNERS_MODE=external
+      - N8N_RUNNERS_TASK_BROKER_URI=http://n8n:5679
+    depends_on:
+      n8n:
+        condition: service_healthy
+    deploy:
+      resources:
+        limits:
+          memory: 1g
+        reservations:
+          memory: 512m
