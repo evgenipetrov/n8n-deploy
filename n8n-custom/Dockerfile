@@ -6,11 +6,13 @@ FROM docker.n8n.io/n8nio/n8n:${N8N_VERSION}
 # Switch to root to install packages
 USER root
 
-# Install Python 3 and pip
-RUN apk add --no-cache \
+# Install Python 3 and pip (Debian/Ubuntu)
+RUN apt-get update && apt-get install -y --no-install-recommends \
     python3 \
-    py3-pip \
-    && ln -sf python3 /usr/bin/python
+    python3-pip \
+    python3-venv \
+    && ln -sf python3 /usr/bin/python \
+    && rm -rf /var/lib/apt/lists/*
 
 # Install common Python packages (optional, add what you need)
 RUN pip3 install --no-cache-dir --break-system-packages \
