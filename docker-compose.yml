@@ -24,17 +24,19 @@ networks:
 # =============================================================================
 
 x-n8n: &service-n8n
-  build:
-    context: ./n8n-python-inject
-    args:
-      N8N_VERSION: ${N8N_VERSION:-latest}
-  image: n8n-python:${N8N_VERSION:-latest}
+  image: docker.n8n.io/n8nio/n8n:${N8N_VERSION:-latest}
   networks: ["web"]
   dns:
     - 8.8.8.8
     - 8.8.4.4
     - 1.1.1.1
   environment:
+    # Python Code Node Configuration (External Mode)
+    - N8N_RUNNERS_MODE=external
+    - N8N_RUNNERS_BROKER_LISTEN_ADDRESS=0.0.0.0
+    - N8N_RUNNERS_STDLIB_ALLOW=*
+    - N8N_RUNNERS_EXTERNAL_ALLOW=pandas,numpy,requests,bs4,openpyxl,PIL,lxml
+    - N8N_RUNNERS_AUTH_TOKEN=${N8N_RUNNERS_AUTH_TOKEN:-changeme-random-token-here}
     # Queue Mode Configuration
     - EXECUTIONS_MODE=queue
     - QUEUE_BULL_REDIS_HOST=redis
@@ -238,6 +240,12 @@ services:
     command: worker
     restart: unless-stopped
     environment:
+      # Python Code Node Configuration (External Mode)
+      - N8N_RUNNERS_MODE=external
+      - N8N_RUNNERS_BROKER_LISTEN_ADDRESS=0.0.0.0
+      - N8N_RUNNERS_STDLIB_ALLOW=*
+      - N8N_RUNNERS_EXTERNAL_ALLOW=pandas,numpy,requests,bs4,openpyxl,PIL,lxml
+      - N8N_RUNNERS_AUTH_TOKEN=${N8N_RUNNERS_AUTH_TOKEN:-changeme-random-token-here}
       # Inherit from x-n8n anchor, add worker-specific settings
       - EXECUTIONS_MODE=queue
       - QUEUE_BULL_REDIS_HOST=redis
@@ -283,6 +291,27 @@ services:
           memory: 2g
         reservations:
           memory: 1g
+
+  # ---------------------------------------------------------------------------
+  # Task Runner - Python and JS Code node execution
+  # ---------------------------------------------------------------------------
+  n8n-task-runner:
+    build:
+      context: ./n8n-task-runner
+      args:
+        N8N_VERSION: ${N8N_VERSION:-latest}
+    image: n8n-task-runner:${N8N_VERSION:-latest}
+    hostname: n8n-task-runner
+    container_name: n8n-task-runner
+    restart: unless-stopped
+    networks: ["web"]
+    depends_on:
+      n8n:
+        condition: service_healthy
+    environment:
+      - N8N_RUNNERS_AUTH_TOKEN=${N8N_RUNNERS_AUTH_TOKEN:-changeme-random-token-here}
+      - N8N_RUNNERS_TASK_BROKER_URI=http://n8n:5679
+      - N8N_RUNNERS_MAX_CONCURRENCY=5
 
   # ---------------------------------------------------------------------------
   # Caddy - Reverse proxy with automatic HTTPS
