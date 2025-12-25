@@ -24,9 +24,11 @@ networks:
 # =============================================================================
 
 x-n8n: &service-n8n
-  # Using community image with Python support
-  # Falls back to official image if you set N8N_USE_PYTHON=false
-  image: ${N8N_IMAGE:-naskio/n8n-python:latest}
+  build:
+    context: ./n8n-python-inject
+    args:
+      N8N_VERSION: ${N8N_VERSION:-latest}
+  image: n8n-python:${N8N_VERSION:-latest}
   networks: ["web"]
   dns:
     - 8.8.8.8
@@ -360,4 +362,3 @@ services:
     image: ollama/ollama:rocm
     depends_on:
      - ollama-gpu-amd
-
