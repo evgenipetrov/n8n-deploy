@@ -3,7 +3,7 @@
   "updatedAt": "2024-02-23T16:58:31.616Z",
   "id": "srOnR8PAY3u4RSwb",
   "name": "Demo workflow",
-  "active": false,
+  "active": true,
   "nodes": [
     {
       "parameters": {},

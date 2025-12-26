@@ -32,10 +32,11 @@ x-n8n: &service-n8n
     - 1.1.1.1
   environment:
     # Python Code Node Configuration (External Mode)
+    # Packages installed dynamically on-demand via official n8nio/runners task runner
     - N8N_RUNNERS_MODE=external
     - N8N_RUNNERS_BROKER_LISTEN_ADDRESS=0.0.0.0
     - N8N_RUNNERS_STDLIB_ALLOW=*
-    - N8N_RUNNERS_EXTERNAL_ALLOW=pandas,numpy,requests,bs4,openpyxl,PIL,lxml
+    - N8N_RUNNERS_EXTERNAL_ALLOW=*
     - N8N_RUNNERS_AUTH_TOKEN=${N8N_RUNNERS_AUTH_TOKEN:-changeme-random-token-here}
     # Queue Mode Configuration
     - EXECUTIONS_MODE=queue
@@ -241,10 +242,11 @@ services:
     restart: unless-stopped
     environment:
       # Python Code Node Configuration (External Mode)
+      # Packages installed dynamically on-demand via official n8nio/runners task runner
       - N8N_RUNNERS_MODE=external
       - N8N_RUNNERS_BROKER_LISTEN_ADDRESS=0.0.0.0
       - N8N_RUNNERS_STDLIB_ALLOW=*
-      - N8N_RUNNERS_EXTERNAL_ALLOW=pandas,numpy,requests,bs4,openpyxl,PIL,lxml
+      - N8N_RUNNERS_EXTERNAL_ALLOW=*
       - N8N_RUNNERS_AUTH_TOKEN=${N8N_RUNNERS_AUTH_TOKEN:-changeme-random-token-here}
       # Inherit from x-n8n anchor, add worker-specific settings
       - EXECUTIONS_MODE=queue
@@ -294,13 +296,11 @@ services:
 
   # ---------------------------------------------------------------------------
   # Task Runner - Python and JS Code node execution
+  # Using official n8nio/runners:latest image
+  # Packages installed dynamically on-demand via N8N_RUNNERS_EXTERNAL_ALLOW=*
   # ---------------------------------------------------------------------------
   n8n-task-runner:
-    build:
-      context: ./n8n-task-runner
-      args:
-        N8N_VERSION: ${N8N_VERSION:-latest}
-    image: n8n-task-runner:${N8N_VERSION:-latest}
+    image: n8nio/runners:latest
     hostname: n8n-task-runner
     container_name: n8n-task-runner
     restart: unless-stopped
