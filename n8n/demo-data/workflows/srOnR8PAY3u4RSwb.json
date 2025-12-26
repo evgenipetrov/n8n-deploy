@@ -31,7 +31,9 @@
     {
       "parameters": {
         "model": "llama3.2:latest",
-        "options": {}
+        "options": {
+          "system": "You are a helpful assistant. Keep your answers concise. If asked to generate a title, keep it under 50 characters."
+        }
       },
       "id": "3dee878b-d748-4829-ac0a-cfd6705d31e5",
       "name": "Ollama Chat Model",
