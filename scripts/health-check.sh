@@ -91,6 +91,16 @@ else
     echo -e "  ${YELLOW}⊙${NC} ollama: ${YELLOW}NOT DEPLOYED${NC} (use --profile cpu/gpu-nvidia/gpu-amd)"
 fi
 
+# Check Python Runner Status (n8n v2)
+echo ""
+echo -e "${BLUE}Python Runner Status (n8n v2):${NC}"
+PYTHON_ENABLED=$(docker exec n8n printenv N8N_NATIVE_PYTHON_RUNNER 2>/dev/null || echo "not set")
+if [ "$PYTHON_ENABLED" = "true" ]; then
+    echo -e "  ${GREEN}✓${NC} Native Python runner enabled"
+else
+    echo -e "  ${YELLOW}⚠${NC} Native Python runner not enabled (set N8N_NATIVE_PYTHON_RUNNER=true)"
+fi
+
 echo ""
 echo -e "${BLUE}Resource Usage:${NC}"
 echo ""

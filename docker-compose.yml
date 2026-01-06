@@ -33,7 +33,9 @@ x-n8n: &service-n8n
   environment:
     # Python Code Node Configuration (External Mode)
     # Packages installed dynamically on-demand via official n8nio/runners task runner
+    - N8N_RUNNERS_ENABLED=true
     - N8N_RUNNERS_MODE=external
+    - N8N_NATIVE_PYTHON_RUNNER=true
     - N8N_RUNNERS_BROKER_LISTEN_ADDRESS=0.0.0.0
     - N8N_RUNNERS_STDLIB_ALLOW=*
     - N8N_RUNNERS_EXTERNAL_ALLOW=*
@@ -240,10 +242,15 @@ services:
     hostname: n8n-worker
     command: worker
     restart: unless-stopped
+    labels:
+      - "com.centurylinklabs.watchtower.enable=true"
+      - "com.centurylinklabs.watchtower.depends-on=n8n-task-runner"
     environment:
       # Python Code Node Configuration (External Mode)
       # Packages installed dynamically on-demand via official n8nio/runners task runner
+      - N8N_RUNNERS_ENABLED=true
       - N8N_RUNNERS_MODE=external
+      - N8N_NATIVE_PYTHON_RUNNER=true
       - N8N_RUNNERS_BROKER_LISTEN_ADDRESS=0.0.0.0
       - N8N_RUNNERS_STDLIB_ALLOW=*
       - N8N_RUNNERS_EXTERNAL_ALLOW=*
@@ -296,15 +303,17 @@ services:
 
   # ---------------------------------------------------------------------------
   # Task Runner - Python and JS Code node execution
-  # Using official n8nio/runners:latest image
+  # Using official n8nio/runners image (version must match n8n)
   # Packages installed dynamically on-demand via N8N_RUNNERS_EXTERNAL_ALLOW=*
   # ---------------------------------------------------------------------------
   n8n-task-runner:
-    image: n8nio/runners:latest
+    image: n8nio/runners:${N8N_VERSION}
     hostname: n8n-task-runner
     container_name: n8n-task-runner
     restart: unless-stopped
     networks: ["web"]
+    labels:
+      - "com.centurylinklabs.watchtower.enable=true"
     depends_on:
       n8n:
         condition: service_healthy
