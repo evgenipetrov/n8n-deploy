@@ -54,6 +54,27 @@ UPDATED_IMAGES=$(docker compose images --quiet | xargs docker inspect --format='
 echo -e "${GREEN}✓${NC} Found $UPDATED_IMAGES unique images"
 echo ""
 
+# Verify version synchronization between n8n and task runner
+echo -e "${BLUE}Verifying version synchronization...${NC}"
+N8N_IMAGE=$(docker compose config | grep -A 1 "^  n8n:" | grep "image:" | awk '{print $2}')
+RUNNER_IMAGE=$(docker compose config | grep -A 1 "^  n8n-task-runner:" | grep "image:" | awk '{print $2}')
+
+N8N_VERSION=$(echo "$N8N_IMAGE" | cut -d: -f2)
+RUNNER_VERSION=$(echo "$RUNNER_IMAGE" | cut -d: -f2)
+
+if [ "$N8N_VERSION" != "$RUNNER_VERSION" ]; then
+    echo -e "${RED}✗${NC} Version mismatch detected!"
+    echo -e "   ${YELLOW}n8n version:${NC} $N8N_VERSION"
+    echo -e "   ${YELLOW}Task runner version:${NC} $RUNNER_VERSION"
+    echo -e ""
+    echo -e "${RED}ERROR: n8n and task runner versions MUST match for compatibility.${NC}"
+    echo -e "Please check your .env file and ensure N8N_VERSION is set correctly."
+    exit 1
+fi
+
+echo -e "${GREEN}✓${NC} n8n and task runner versions match: $N8N_VERSION"
+echo ""
+
 # Recreate services with new images
 echo -e "${BLUE}Recreating services...${NC}"
 docker compose up -d --remove-orphans --no-build

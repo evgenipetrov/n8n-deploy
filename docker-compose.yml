@@ -24,7 +24,7 @@ networks:
 # =============================================================================
 
 x-n8n: &service-n8n
-  image: docker.n8n.io/n8nio/n8n:${N8N_VERSION:-latest}
+  image: docker.n8n.io/n8nio/n8n:${N8N_VERSION}
   networks: ["web"]
   dns:
     - 8.8.8.8
@@ -219,6 +219,9 @@ services:
     hostname: n8n
     container_name: n8n
     restart: unless-stopped
+    labels:
+      - "com.centurylinklabs.watchtower.enable=true"
+      - "com.centurylinklabs.watchtower.depends-on=n8n-task-runner"
     depends_on:
       redis:
         condition: service_healthy
