@@ -50,6 +50,90 @@ BLUE='\033[0;34m'
 CYAN='\033[0;36m'
 NC='\033[0m'
 
+# =============================================================================
+# Environment Variable Validation Function
+# =============================================================================
+validate_env_vars() {
+    local missing_vars=()
+    local weak_vars=()
+    local has_errors=false
+
+    # Critical variables that must be set
+    local critical_vars=(
+        "N8N_ENCRYPTION_KEY"
+        "N8N_USER_MANAGEMENT_JWT_SECRET"
+        "N8N_RUNNERS_AUTH_TOKEN"
+        "POSTGRES_USER"
+        "POSTGRES_PASSWORD"
+        "POSTGRES_DB"
+    )
+
+    # Important variables that should be set
+    local important_vars=(
+        "DOMAIN_NAME"
+        "SUBDOMAIN"
+        "GENERIC_TIMEZONE"
+    )
+
+    # Optional but recommended
+    local recommended_vars=(
+        "N8N_VERSION"
+    )
+
+    echo -e "${BLUE}Validating environment variables...${NC}"
+    echo ""
+
+    # Check critical variables
+    for var in "${critical_vars[@]}"; do
+        if [ -z "${!var:-}" ]; then
+            missing_vars+=("$var")
+            has_errors=true
+        elif [ "${!var}" = "change_me" ] || [ "${!var}" = "changeme" ]; then
+            weak_vars+=("$var")
+            has_errors=true
+        fi
+    done
+
+    # Check important variables
+    for var in "${important_vars[@]}"; do
+        if [ -z "${!var:-}" ]; then
+            echo -e "  ${YELLOW}⚠${NC} $var is not set (recommended)"
+        fi
+    done
+
+    # Report critical issues
+    if [ ${#missing_vars[@]} -gt 0 ]; then
+        echo -e "${RED}✗ Critical variables missing:${NC}"
+        for var in "${missing_vars[@]}"; do
+            echo -e "  ${RED}•${NC} $var"
+        done
+        echo ""
+    fi
+
+    if [ ${#weak_vars[@]} -gt 0 ]; then
+        echo -e "${RED}✗ Security issue - default values detected:${NC}"
+        for var in "${weak_vars[@]}"; do
+            echo -e "  ${RED}•${NC} $var is set to 'change_me' (INSECURE!)"
+        done
+        echo ""
+    fi
+
+    # Report status
+    if [ "$has_errors" = true ]; then
+        echo -e "${RED}Environment validation failed!${NC}"
+        echo -e ""
+        echo -e "Please update your .env file with proper values:"
+        echo -e "  ${CYAN}nano .env${NC}"
+        echo -e ""
+        echo -e "Reference: .env.sample for required variables"
+        return 1
+    else
+        echo -e "${GREEN}✓${NC} All critical environment variables are set"
+        echo ""
+        return 0
+    fi
+}
+
 echo -e "${BLUE}==============================================================================${NC}"
 echo -e "${BLUE}n8n Deployment Script${NC}"
 echo -e "${BLUE}==============================================================================${NC}"
@@ -59,6 +143,21 @@ echo ""
 if [ ! -f "docker-compose.yml" ]; then
     echo -e "${RED}✗ docker-compose.yml not found${NC}"
     echo -e "Please run this script from the project root directory"
+    exit 1
+fi
+
+# Load environment variables and validate
+if [ -f ".env" ]; then
+    set -a
+    source .env
+    set +a
+
+    if ! validate_env_vars; then
+        exit 1
+    fi
+else
+    echo -e "${RED}✗ .env file not found${NC}"
+    echo -e "Please create a .env file (copy from .env.sample)"
     exit 1
 fi
 

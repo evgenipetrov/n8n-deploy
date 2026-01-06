@@ -14,11 +14,84 @@ RED='\033[0;31m'
 GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
 BLUE='\033[0;34m'
+CYAN='\033[0;36m'
 NC='\033[0m' # No Color
+
+# =============================================================================
+# Environment Variable Validation Function
+# =============================================================================
+validate_env_vars() {
+    local missing_vars=()
+    local weak_vars=()
+    local warning_count=0
+
+    # Critical variables that must be set
+    local critical_vars=(
+        "N8N_ENCRYPTION_KEY"
+        "N8N_USER_MANAGEMENT_JWT_SECRET"
+        "N8N_RUNNERS_AUTH_TOKEN"
+        "POSTGRES_USER"
+        "POSTGRES_PASSWORD"
+        "POSTGRES_DB"
+    )
+
+    # Important variables that should be set
+    local important_vars=(
+        "DOMAIN_NAME"
+        "SUBDOMAIN"
+        "GENERIC_TIMEZONE"
+    )
+
+    # Check critical variables
+    for var in "${critical_vars[@]}"; do
+        if [ -z "${!var:-}" ]; then
+            missing_vars+=("$var")
+        elif [ "${!var}" = "change_me" ] || [ "${!var}" = "changeme" ]; then
+            weak_vars+=("$var")
+        fi
+    done
+
+    # Check important variables
+    for var in "${important_vars[@]}"; do
+        if [ -z "${!var:-}" ]; then
+            warning_count=$((warning_count + 1))
+        fi
+    done
+
+    # Return status: 0 = all good, 1 = warnings, 2 = critical issues
+    if [ ${#missing_vars[@]} -gt 0 ] || [ ${#weak_vars[@]} -gt 0 ]; then
+        return 2
+    elif [ $warning_count -gt 0 ]; then
+        return 1
+    else
+        return 0
+    fi
+}
 
 echo -e "${BLUE}==============================================================================${NC}"
 echo -e "${BLUE}n8n Deployment Health Check${NC}"
 echo -e "${BLUE}==============================================================================${NC}"
+echo ""
+
+# Load and validate environment variables
+if [ -f ".env" ]; then
+    set -a
+    source .env 2>/dev/null
+    set +a
+
+    validate_env_vars
+    ENV_STATUS=$?
+
+    if [ $ENV_STATUS -eq 0 ]; then
+        echo -e "${GREEN}✓${NC} Environment variables validated"
+    elif [ $ENV_STATUS -eq 1 ]; then
+        echo -e "${YELLOW}⚠${NC} Environment has warnings (non-critical)"
+    else
+        echo -e "${RED}✗${NC} Environment validation failed (critical)"
+    fi
+else
+    echo -e "${RED}✗${NC} .env file not found"
+fi
 echo ""
 
 # Check if Docker is running
