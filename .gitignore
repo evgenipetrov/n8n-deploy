@@ -69,6 +69,7 @@ tmp/
 *.backup
 *.bak
 *.old
+backups/
 
 # SSL/TLS Certificates (if locally generated)
 # -----------------------------------------------------------------------------
