@@ -24,7 +24,7 @@ networks:
 # =============================================================================
 
 x-n8n: &service-n8n
-  image: docker.n8n.io/n8nio/n8n:${N8N_VERSION}
+  image: docker.n8n.io/n8nio/n8n:${N8N_VERSION:-latest}
   networks: ["web"]
   dns:
     - 8.8.8.8
@@ -325,7 +325,7 @@ services:
   # Packages installed dynamically on-demand via N8N_RUNNERS_EXTERNAL_ALLOW=*
   # ---------------------------------------------------------------------------
   n8n-task-runner:
-    image: n8nio/runners:${N8N_VERSION}
+    image: n8nio/runners:${N8N_VERSION:-latest}
     hostname: n8n-task-runner
     container_name: n8n-task-runner
     restart: unless-stopped
