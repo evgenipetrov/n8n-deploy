@@ -245,28 +245,29 @@ services:
       retries: 10
 
   # ---------------------------------------------------------------------------
-  # n8n Workers - Scalable execution workers (3 replicas)
+  # n8n Workers with Task Runner Sidecars
+  # Each worker has its own task runner for external Code node execution
   # Memory: 2 GB limit, 1 GB reservation per worker
   # ---------------------------------------------------------------------------
-  n8n-worker:
+
+  # Worker 1
+  n8n-worker-1:
     <<: *service-n8n
-    hostname: n8n-worker
+    hostname: n8n-worker-1
+    container_name: n8n-worker-1
     command: worker
     restart: unless-stopped
     labels:
       - "com.centurylinklabs.watchtower.enable=true"
-      - "com.centurylinklabs.watchtower.depends-on=n8n-task-runner"
     environment:
-      # Python Code Node Configuration (External Mode)
-      # Workers connect to the broker running on the main n8n instance
+      # External mode - each worker has its own task runner sidecar
       - N8N_RUNNERS_ENABLED=true
       - N8N_RUNNERS_MODE=external
       - N8N_NATIVE_PYTHON_RUNNER=true
-      - N8N_RUNNERS_TASK_BROKER_URI=http://n8n:5679
+      - N8N_RUNNERS_BROKER_LISTEN_ADDRESS=0.0.0.0
       - N8N_RUNNERS_STDLIB_ALLOW=*
       - N8N_RUNNERS_EXTERNAL_ALLOW=*
       - N8N_RUNNERS_AUTH_TOKEN=${N8N_RUNNERS_AUTH_TOKEN:-changeme-random-token-here}
-      # Inherit from x-n8n anchor, add worker-specific settings
       - EXECUTIONS_MODE=queue
       - QUEUE_BULL_REDIS_HOST=redis
       - QUEUE_HEALTH_CHECK_ACTIVE=true
@@ -312,17 +313,214 @@ services:
     volumes:
       - n8n_data:/home/node/.n8n
     deploy:
-      replicas: 3
       resources:
         limits:
           memory: 2g
         reservations:
           memory: 1g
+    healthcheck:
+      test: ["CMD-SHELL", "wget --no-verbose --tries=1 --spider http://localhost:5678/healthz || exit 1"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  n8n-task-runner-1:
+    image: n8nio/runners:${N8N_VERSION:-latest}
+    hostname: n8n-task-runner-1
+    container_name: n8n-task-runner-1
+    restart: unless-stopped
+    networks: ["web"]
+    labels:
+      - "com.centurylinklabs.watchtower.enable=true"
+    depends_on:
+      n8n-worker-1:
+        condition: service_healthy
+    environment:
+      - N8N_RUNNERS_AUTH_TOKEN=${N8N_RUNNERS_AUTH_TOKEN:-changeme-random-token-here}
+      - N8N_RUNNERS_TASK_BROKER_URI=http://n8n-worker-1:5679
+      - N8N_RUNNERS_MAX_CONCURRENCY=5
+
+  # Worker 2
+  n8n-worker-2:
+    <<: *service-n8n
+    hostname: n8n-worker-2
+    container_name: n8n-worker-2
+    command: worker
+    restart: unless-stopped
+    labels:
+      - "com.centurylinklabs.watchtower.enable=true"
+    environment:
+      - N8N_RUNNERS_ENABLED=true
+      - N8N_RUNNERS_MODE=external
+      - N8N_NATIVE_PYTHON_RUNNER=true
+      - N8N_RUNNERS_BROKER_LISTEN_ADDRESS=0.0.0.0
+      - N8N_RUNNERS_STDLIB_ALLOW=*
+      - N8N_RUNNERS_EXTERNAL_ALLOW=*
+      - N8N_RUNNERS_AUTH_TOKEN=${N8N_RUNNERS_AUTH_TOKEN:-changeme-random-token-here}
+      - EXECUTIONS_MODE=queue
+      - QUEUE_BULL_REDIS_HOST=redis
+      - QUEUE_HEALTH_CHECK_ACTIVE=true
+      - QUEUE_WORKER_LOCK_DURATION=60000
+      - DB_TYPE=postgresdb
+      - DB_POSTGRESDB_HOST=postgres
+      - DB_POSTGRESDB_PORT=5432
+      - DB_POSTGRESDB_DATABASE=${POSTGRES_DB}
+      - DB_POSTGRESDB_USER=${POSTGRES_USER}
+      - DB_POSTGRESDB_PASSWORD=${POSTGRES_PASSWORD}
+      - DB_POSTGRESDB_POOL_SIZE=10
+      - DB_POSTGRESDB_CONNECTION_TIMEOUT=30000
+      - DB_POSTGRESDB_IDLE_CONNECTION_TIMEOUT=60000
+      - EXECUTIONS_DATA_PRUNE=true
+      - EXECUTIONS_DATA_MAX_AGE=24
+      - EXECUTIONS_DATA_PRUNE_MAX_COUNT=1000
+      - EXECUTIONS_DATA_PRUNE_HARD_DELETE_INTERVAL=60
+      - EXECUTIONS_DATA_PRUNE_SOFT_DELETE_INTERVAL=30
+      - EXECUTIONS_DATA_SAVE_MANUAL_EXECUTIONS=false
+      - N8N_EXECUTIONS_DATA_MAX_SIZE=10
+      - N8N_PAYLOAD_SIZE_MAX=32
+      - N8N_DIAGNOSTICS_ENABLED=false
+      - N8N_PERSONALIZATION_ENABLED=false
+      - N8N_ENCRYPTION_KEY=${N8N_ENCRYPTION_KEY}
+      - N8N_USER_MANAGEMENT_JWT_SECRET=${N8N_USER_MANAGEMENT_JWT_SECRET}
+      - N8N_ENFORCE_SETTINGS_FILE_PERMISSIONS=true
+      - NODE_ENV=production
+      - OLLAMA_HOST=${OLLAMA_HOST:-ollama:11434}
+      - N8N_HOST=${SUBDOMAIN}.${DOMAIN_NAME}
+      - N8N_PORT=5678
+      - N8N_PROTOCOL=https
+      - N8N_EDITOR_BASE_URL=https://${SUBDOMAIN}.${DOMAIN_NAME}
+      - WEBHOOK_URL=https://${SUBDOMAIN}.${DOMAIN_NAME}/
+      - GENERIC_TIMEZONE=${GENERIC_TIMEZONE}
+      - TZ=${GENERIC_TIMEZONE}
+    depends_on:
+      redis:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+      n8n:
+        condition: service_healthy
+    volumes:
+      - n8n_data:/home/node/.n8n
+    deploy:
+      resources:
+        limits:
+          memory: 2g
+        reservations:
+          memory: 1g
+    healthcheck:
+      test: ["CMD-SHELL", "wget --no-verbose --tries=1 --spider http://localhost:5678/healthz || exit 1"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  n8n-task-runner-2:
+    image: n8nio/runners:${N8N_VERSION:-latest}
+    hostname: n8n-task-runner-2
+    container_name: n8n-task-runner-2
+    restart: unless-stopped
+    networks: ["web"]
+    labels:
+      - "com.centurylinklabs.watchtower.enable=true"
+    depends_on:
+      n8n-worker-2:
+        condition: service_healthy
+    environment:
+      - N8N_RUNNERS_AUTH_TOKEN=${N8N_RUNNERS_AUTH_TOKEN:-changeme-random-token-here}
+      - N8N_RUNNERS_TASK_BROKER_URI=http://n8n-worker-2:5679
+      - N8N_RUNNERS_MAX_CONCURRENCY=5
+
+  # Worker 3
+  n8n-worker-3:
+    <<: *service-n8n
+    hostname: n8n-worker-3
+    container_name: n8n-worker-3
+    command: worker
+    restart: unless-stopped
+    labels:
+      - "com.centurylinklabs.watchtower.enable=true"
+    environment:
+      - N8N_RUNNERS_ENABLED=true
+      - N8N_RUNNERS_MODE=external
+      - N8N_NATIVE_PYTHON_RUNNER=true
+      - N8N_RUNNERS_BROKER_LISTEN_ADDRESS=0.0.0.0
+      - N8N_RUNNERS_STDLIB_ALLOW=*
+      - N8N_RUNNERS_EXTERNAL_ALLOW=*
+      - N8N_RUNNERS_AUTH_TOKEN=${N8N_RUNNERS_AUTH_TOKEN:-changeme-random-token-here}
+      - EXECUTIONS_MODE=queue
+      - QUEUE_BULL_REDIS_HOST=redis
+      - QUEUE_HEALTH_CHECK_ACTIVE=true
+      - QUEUE_WORKER_LOCK_DURATION=60000
+      - DB_TYPE=postgresdb
+      - DB_POSTGRESDB_HOST=postgres
+      - DB_POSTGRESDB_PORT=5432
+      - DB_POSTGRESDB_DATABASE=${POSTGRES_DB}
+      - DB_POSTGRESDB_USER=${POSTGRES_USER}
+      - DB_POSTGRESDB_PASSWORD=${POSTGRES_PASSWORD}
+      - DB_POSTGRESDB_POOL_SIZE=10
+      - DB_POSTGRESDB_CONNECTION_TIMEOUT=30000
+      - DB_POSTGRESDB_IDLE_CONNECTION_TIMEOUT=60000
+      - EXECUTIONS_DATA_PRUNE=true
+      - EXECUTIONS_DATA_MAX_AGE=24
+      - EXECUTIONS_DATA_PRUNE_MAX_COUNT=1000
+      - EXECUTIONS_DATA_PRUNE_HARD_DELETE_INTERVAL=60
+      - EXECUTIONS_DATA_PRUNE_SOFT_DELETE_INTERVAL=30
+      - EXECUTIONS_DATA_SAVE_MANUAL_EXECUTIONS=false
+      - N8N_EXECUTIONS_DATA_MAX_SIZE=10
+      - N8N_PAYLOAD_SIZE_MAX=32
+      - N8N_DIAGNOSTICS_ENABLED=false
+      - N8N_PERSONALIZATION_ENABLED=false
+      - N8N_ENCRYPTION_KEY=${N8N_ENCRYPTION_KEY}
+      - N8N_USER_MANAGEMENT_JWT_SECRET=${N8N_USER_MANAGEMENT_JWT_SECRET}
+      - N8N_ENFORCE_SETTINGS_FILE_PERMISSIONS=true
+      - NODE_ENV=production
+      - OLLAMA_HOST=${OLLAMA_HOST:-ollama:11434}
+      - N8N_HOST=${SUBDOMAIN}.${DOMAIN_NAME}
+      - N8N_PORT=5678
+      - N8N_PROTOCOL=https
+      - N8N_EDITOR_BASE_URL=https://${SUBDOMAIN}.${DOMAIN_NAME}
+      - WEBHOOK_URL=https://${SUBDOMAIN}.${DOMAIN_NAME}/
+      - GENERIC_TIMEZONE=${GENERIC_TIMEZONE}
+      - TZ=${GENERIC_TIMEZONE}
+    depends_on:
+      redis:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+      n8n:
+        condition: service_healthy
+    volumes:
+      - n8n_data:/home/node/.n8n
+    deploy:
+      resources:
+        limits:
+          memory: 2g
+        reservations:
+          memory: 1g
+    healthcheck:
+      test: ["CMD-SHELL", "wget --no-verbose --tries=1 --spider http://localhost:5678/healthz || exit 1"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  n8n-task-runner-3:
+    image: n8nio/runners:${N8N_VERSION:-latest}
+    hostname: n8n-task-runner-3
+    container_name: n8n-task-runner-3
+    restart: unless-stopped
+    networks: ["web"]
+    labels:
+      - "com.centurylinklabs.watchtower.enable=true"
+    depends_on:
+      n8n-worker-3:
+        condition: service_healthy
+    environment:
+      - N8N_RUNNERS_AUTH_TOKEN=${N8N_RUNNERS_AUTH_TOKEN:-changeme-random-token-here}
+      - N8N_RUNNERS_TASK_BROKER_URI=http://n8n-worker-3:5679
+      - N8N_RUNNERS_MAX_CONCURRENCY=5
 
   # ---------------------------------------------------------------------------
-  # Task Runner - Python and JS Code node execution
-  # Using official n8nio/runners image (version must match n8n)
-  # Packages installed dynamically on-demand via N8N_RUNNERS_EXTERNAL_ALLOW=*
+  # Task Runner for Main n8n Instance
+  # Handles Code nodes executed directly on main (webhooks, manual runs)
   # ---------------------------------------------------------------------------
   n8n-task-runner:
     image: n8nio/runners:${N8N_VERSION:-latest}
