@@ -258,11 +258,11 @@ services:
       - "com.centurylinklabs.watchtower.depends-on=n8n-task-runner"
     environment:
       # Python Code Node Configuration (External Mode)
-      # Packages installed dynamically on-demand via official n8nio/runners task runner
+      # Workers connect to the broker running on the main n8n instance
       - N8N_RUNNERS_ENABLED=true
       - N8N_RUNNERS_MODE=external
       - N8N_NATIVE_PYTHON_RUNNER=true
-      - N8N_RUNNERS_BROKER_LISTEN_ADDRESS=0.0.0.0
+      - N8N_RUNNERS_TASK_BROKER_URI=http://n8n:5679
       - N8N_RUNNERS_STDLIB_ALLOW=*
       - N8N_RUNNERS_EXTERNAL_ALLOW=*
       - N8N_RUNNERS_AUTH_TOKEN=${N8N_RUNNERS_AUTH_TOKEN:-changeme-random-token-here}
