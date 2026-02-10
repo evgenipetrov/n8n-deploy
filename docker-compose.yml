@@ -173,7 +173,7 @@ services:
     command:
       - "redis-server"
       - "--maxmemory"
-      - "1.5gb"
+      - "1536mb"
       - "--maxmemory-policy"
       - "noeviction"
       - "--appendonly"
