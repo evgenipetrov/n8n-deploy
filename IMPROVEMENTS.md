@@ -116,18 +116,28 @@ This document summarizes all improvements made to bring the n8n deployment to pr
 
 **Impact:** 🔴 Critical - Quick recovery from failures
 
-#### update.sh
+#### deploy.sh (formerly update.sh + deploy.sh)
 ```bash
-./scripts/update.sh [--backup]
+./scripts/deploy.sh [--skip-git] [--no-backup] [--no-health-check] [--profile <name>]
 ```
-- Automated image updates
-- Optional pre-update backup
-- Safe service recreation
-- Health check after update
-- Automatic cleanup of old images
-- Zero-downtime updates
+- Unified deploy pipeline: git pull → backup → image pull → version sync check → restart → health wait → prune
+- Replaces both the old `update.sh` and `deploy.sh` scripts
+- Profile support for Ollama (cpu, gpu-nvidia, gpu-amd)
+- Shared library (`scripts/lib/common.sh`) eliminates code duplication
 
 **Impact:** 🟢 High - Simplifies maintenance
+
+#### start.sh / stop.sh / restart.sh
+```bash
+./scripts/start.sh [--profile <name>]
+./scripts/stop.sh [--profile <name>]
+./scripts/restart.sh [--profile <name>]
+```
+- Start: brings up all services with health wait
+- Stop: preserves containers for fast restart (`docker compose stop`)
+- Restart: recreates containers with current config (`--force-recreate`, no image pull)
+
+**Impact:** 🟢 High - Proper lifecycle management
 
 ---
 
@@ -274,10 +284,14 @@ OPERATIONS.md                   # Operations procedures
 SECURITY.md                     # Security recommendations
 QUICK-REFERENCE.md              # Command cheat sheet
 IMPROVEMENTS.md                 # This file
+scripts/lib/common.sh           # Shared library (colors, logging, helpers)
+scripts/deploy.sh               # Full deploy pipeline (replaces update.sh + deploy.sh)
+scripts/start.sh                # Start all services
+scripts/stop.sh                 # Stop all services
+scripts/restart.sh              # Recreate containers
 scripts/health-check.sh         # Health monitoring
 scripts/backup.sh               # Backup creation
 scripts/restore.sh              # Backup restoration
-scripts/update.sh               # Image updates
 ```
 
 ### Modified Files (2025-12-26)

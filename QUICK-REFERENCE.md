@@ -52,17 +52,30 @@ docker stats
 ls -lh backups/
 ```
 
-### Updates
+### Deploy / Update
 
 ```bash
-# Update all images
-./scripts/update.sh
+# Full deploy pipeline (git pull, backup, image pull, restart, health check)
+./scripts/deploy.sh
 
-# Pull latest images only
-docker compose pull
+# Deploy with Ollama profile
+./scripts/deploy.sh --profile gpu-nvidia
 
-# Apply updates
-docker compose up -d
+# Skip git pull and backup
+./scripts/deploy.sh --skip-git --no-backup
+```
+
+### Start / Stop / Restart
+
+```bash
+# Start all services
+./scripts/start.sh
+
+# Stop all services (preserves containers)
+./scripts/stop.sh
+
+# Recreate containers with current config (no image pull)
+./scripts/restart.sh
 ```
 
 ## 🔧 Common Tasks
@@ -362,10 +375,14 @@ docker run --rm -v n8n-deploy_n8n_data:/source:ro -v $(pwd):/backup alpine tar c
 ### Helper Scripts
 
 ```
+scripts/lib/common.sh    - Shared library (colors, logging, helpers)
+scripts/deploy.sh        - Full deploy pipeline
+scripts/start.sh         - Start all services
+scripts/stop.sh          - Stop all services
+scripts/restart.sh       - Recreate containers
 scripts/health-check.sh  - Check service health
 scripts/backup.sh        - Create backup
 scripts/restore.sh       - Restore from backup
-scripts/update.sh        - Update images
 ```
 
 ## 🔗 Useful URLs

@@ -10,38 +10,27 @@
 
 set -euo pipefail
 
-# Load environment variables
-if [ -f .env ]; then
-    set -a
-    source .env
-    set +a
-else
-    echo "ERROR: .env file not found"
-    exit 1
-fi
+# Source shared library
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=lib/common.sh
+source "$SCRIPT_DIR/lib/common.sh"
+
+ensure_project_root
+load_env
 
 # Configuration
 BACKUP_DIR="${1:-./backups/$(date +%Y-%m-%d-%H%M%S)}"
 TIMESTAMP=$(date +%Y%m%d_%H%M%S)
 
-# Colors
-RED='\033[0;31m'
-GREEN='\033[0;32m'
-BLUE='\033[0;34m'
-NC='\033[0m'
-
-echo -e "${BLUE}==============================================================================${NC}"
-echo -e "${BLUE}n8n Deployment Backup${NC}"
-echo -e "${BLUE}==============================================================================${NC}"
-echo ""
+log_header "n8n Deployment Backup"
 
 # Create backup directory
 mkdir -p "$BACKUP_DIR"
-echo -e "${GREEN}✓${NC} Backup directory: $BACKUP_DIR"
+log_success "Backup directory: $BACKUP_DIR"
 
 # Backup PostgreSQL
 echo ""
-echo -e "${BLUE}Backing up PostgreSQL database...${NC}"
+log_info "Backing up PostgreSQL database..."
 docker compose exec -T postgres pg_dump \
     -U "$POSTGRES_USER" \
     -d "$POSTGRES_DB" \
@@ -51,40 +40,40 @@ docker compose exec -T postgres pg_dump \
 
 # Compress the SQL dump
 gzip "$BACKUP_DIR/postgres_${TIMESTAMP}.sql"
-echo -e "${GREEN}✓${NC} PostgreSQL backup: postgres_${TIMESTAMP}.sql.gz"
+log_success "PostgreSQL backup: postgres_${TIMESTAMP}.sql.gz"
 
 # Backup n8n data volume
 echo ""
-echo -e "${BLUE}Backing up n8n data volume...${NC}"
+log_info "Backing up n8n data volume..."
 docker run --rm \
     -v n8n-deploy_n8n_data:/source:ro \
     -v "$(pwd)/$BACKUP_DIR":/backup \
     alpine \
     tar czf "/backup/n8n_data_${TIMESTAMP}.tar.gz" -C /source .
-echo -e "${GREEN}✓${NC} n8n data backup: n8n_data_${TIMESTAMP}.tar.gz"
+log_success "n8n data backup: n8n_data_${TIMESTAMP}.tar.gz"
 
 # Backup configuration files
 echo ""
-echo -e "${BLUE}Backing up configuration files...${NC}"
+log_info "Backing up configuration files..."
 tar czf "$BACKUP_DIR/config_${TIMESTAMP}.tar.gz" \
     .env \
     docker-compose.yml \
     caddy/Caddyfile \
     postgres/init/ \
     2>/dev/null || true
-echo -e "${GREEN}✓${NC} Configuration backup: config_${TIMESTAMP}.tar.gz"
+log_success "Configuration backup: config_${TIMESTAMP}.tar.gz"
 
 # Backup workflows and credentials separately (if n8n-import demo data exists)
-if [ -d "n8n/demo-data" ]; then
+if [[ -d "n8n/demo-data" ]]; then
     echo ""
-    echo -e "${BLUE}Backing up demo data...${NC}"
+    log_info "Backing up demo data..."
     tar czf "$BACKUP_DIR/demo_data_${TIMESTAMP}.tar.gz" n8n/demo-data/
-    echo -e "${GREEN}✓${NC} Demo data backup: demo_data_${TIMESTAMP}.tar.gz"
+    log_success "Demo data backup: demo_data_${TIMESTAMP}.tar.gz"
 fi
 
 # Create backup manifest
 echo ""
-echo -e "${BLUE}Creating backup manifest...${NC}"
+log_info "Creating backup manifest..."
 cat > "$BACKUP_DIR/MANIFEST.txt" <<EOF
 n8n Deployment Backup Manifest
 ================================
@@ -124,14 +113,12 @@ Notes:
 - Stop n8n services before restoring data
 EOF
 
-echo -e "${GREEN}✓${NC} Manifest created: MANIFEST.txt"
+log_success "Manifest created: MANIFEST.txt"
 
 # Calculate total backup size
 echo ""
 TOTAL_SIZE=$(du -sh "$BACKUP_DIR" | cut -f1)
-echo -e "${BLUE}==============================================================================${NC}"
-echo -e "${GREEN}Backup complete!${NC}"
-echo -e "${BLUE}==============================================================================${NC}"
+log_header "Backup complete!"
 echo -e "Total backup size: ${GREEN}$TOTAL_SIZE${NC}"
 echo -e "Location: ${GREEN}$BACKUP_DIR${NC}"
 echo ""

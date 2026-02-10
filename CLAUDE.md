@@ -16,11 +16,13 @@ docker compose ps                             # Check service status
 docker compose logs -f [service]              # Tail logs for a service
 
 # Operational scripts
+./scripts/deploy.sh                           # Full deploy pipeline (pull, backup, restart, health)
+./scripts/start.sh                            # Start all services
+./scripts/stop.sh                             # Stop all services (preserves containers)
+./scripts/restart.sh                          # Recreate containers with current config
 ./scripts/health-check.sh                     # Full health check with env validation
 ./scripts/backup.sh                           # Backup PostgreSQL + n8n data + config
 ./scripts/restore.sh                          # Restore from backup snapshot
-./scripts/update.sh                           # Safe image update (backs up first)
-./scripts/deploy.sh                           # Automated deployment with checks
 
 # Ollama profiles (pick one)
 docker compose --profile cpu up -d            # CPU-only Ollama
@@ -67,7 +69,7 @@ Single bridge network `web` (subnet `172.19.0.0/16`). Only Caddy exposes ports 8
 
 ## Important Patterns
 
-**Version coupling:** `N8N_VERSION` env var controls both `docker.n8n.io/n8nio/n8n` and `n8nio/runners` image tags. These must always match. The `scripts/update.sh` script handles coordinated updates.
+**Version coupling:** `N8N_VERSION` env var controls both `docker.n8n.io/n8nio/n8n` and `n8nio/runners` image tags. These must always match. The `scripts/deploy.sh` script verifies version sync after pulling images.
 
 **Worker environment duplication:** Workers 1-3 each have their full environment block inline (not using the `x-n8n` anchor's environment) because they need worker-specific settings like `QUEUE_WORKER_LOCK_DURATION`. When changing shared n8n env vars, you must update them in the `x-n8n` anchor AND in all three worker definitions.
 

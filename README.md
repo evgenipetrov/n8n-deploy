@@ -81,6 +81,14 @@ For a complete deployment checklist, see [DEPLOYMENT.md](DEPLOYMENT.md).
 Operational scripts in `scripts/` directory:
 
 ```bash
+# Full deploy pipeline (git pull, backup, image pull, restart, health check)
+./scripts/deploy.sh
+
+# Start / stop / restart all services
+./scripts/start.sh
+./scripts/stop.sh
+./scripts/restart.sh
+
 # Check service health and resource usage
 ./scripts/health-check.sh
 
@@ -89,9 +97,6 @@ Operational scripts in `scripts/` directory:
 
 # Restore from backup
 ./scripts/restore.sh backups/<directory>
-
-# Update all Docker images safely
-./scripts/update.sh
 ```
 
 ## Common Commands
@@ -168,10 +173,14 @@ n8n-deploy/
 ├── SECURITY.md                 # Security recommendations
 ├── QUICK-REFERENCE.md          # Command cheat sheet
 ├── scripts/                     # Helper scripts
+│   ├── lib/common.sh           # Shared library (colors, logging, helpers)
+│   ├── deploy.sh               # Full deploy pipeline
+│   ├── start.sh                # Start all services
+│   ├── stop.sh                 # Stop all services
+│   ├── restart.sh              # Recreate containers
 │   ├── health-check.sh         # Service health monitoring
 │   ├── backup.sh               # Backup creation
-│   ├── restore.sh              # Backup restoration
-│   └── update.sh               # Image updates
+│   └── restore.sh              # Backup restoration
 ├── caddy/
 │   └── Caddyfile               # Reverse proxy config
 ├── n8n/
@@ -190,7 +199,7 @@ This deployment includes several security considerations. For a complete securit
 2. Use strong encryption keys (generate with `openssl rand -hex 32`)
 3. Configure firewall to restrict access to ports 80/443 only
 4. Enable automatic backups (see `scripts/backup.sh`)
-5. Keep images updated regularly (`./scripts/update.sh`)
+5. Keep images updated regularly (`./scripts/deploy.sh`)
 
 ## 📊 Monitoring and Maintenance
 
@@ -210,7 +219,7 @@ This deployment includes several security considerations. For a complete securit
 
 **Updates:**
 ```bash
-./scripts/update.sh
+./scripts/deploy.sh
 ```
 
 For complete operational procedures, see [OPERATIONS.md](OPERATIONS.md).

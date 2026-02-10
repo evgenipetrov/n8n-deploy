@@ -2,369 +2,219 @@
 # =============================================================================
 # n8n Deployment Script
 # =============================================================================
-# Complete deployment workflow: git pull, backup, update images, restart
+# Full deployment pipeline: git pull, backup, pull images, version check,
+# restart services, health wait, image prune, health check.
 #
-# Usage: ./scripts/deploy.sh [--no-backup] [--skip-git] [--no-health-check]
-# Default: Full deployment with all steps
+# Usage: ./scripts/deploy.sh [options]
+#   --skip-git          Skip git pull
+#   --no-backup         Skip pre-deployment backup
+#   --no-health-check   Skip post-deployment health check
+#   --profile <name>    Activate Docker Compose profile (cpu, gpu-nvidia, gpu-amd)
+#   --help              Show this help message
 # =============================================================================
 
 set -euo pipefail
 
+# Source shared library
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=lib/common.sh
+source "$SCRIPT_DIR/lib/common.sh"
+
+ensure_project_root
+load_env
+
 # Parse arguments
-CREATE_BACKUP=true
+parse_profile_flag "$@"
+set -- "${REMAINING_ARGS[@]}"
+
 PULL_GIT=true
+CREATE_BACKUP=true
 RUN_HEALTH_CHECK=true
 
 for arg in "$@"; do
-    case $arg in
-        --no-backup)
-            CREATE_BACKUP=false
-            shift
-            ;;
+    case "$arg" in
         --skip-git)
             PULL_GIT=false
-            shift
+            ;;
+        --no-backup)
+            CREATE_BACKUP=false
             ;;
         --no-health-check)
             RUN_HEALTH_CHECK=false
-            shift
             ;;
         --help)
             echo "Usage: $0 [options]"
             echo ""
+            echo "Full deployment pipeline: git pull, backup, pull images, version check,"
+            echo "restart services, health wait, image prune, health check."
+            echo ""
             echo "Options:"
-            echo "  --no-backup         Skip backup creation"
             echo "  --skip-git          Skip git pull"
+            echo "  --no-backup         Skip pre-deployment backup"
             echo "  --no-health-check   Skip post-deployment health check"
+            echo "  --profile <name>    Activate Compose profile (cpu, gpu-nvidia, gpu-amd)"
             echo "  --help              Show this help message"
+            echo ""
+            echo "Note: Pass --profile consistently across start/stop/restart/deploy"
+            echo "to ensure profile-activated services (e.g., Ollama) are included."
             exit 0
+            ;;
+        *)
+            log_error "Unknown option: $arg"
+            echo "Run $0 --help for usage"
+            exit 1
             ;;
     esac
 done
 
-# Colors
-RED='\033[0;31m'
-GREEN='\033[0;32m'
-YELLOW='\033[1;33m'
-BLUE='\033[0;34m'
-CYAN='\033[0;36m'
-NC='\033[0m'
-
-# =============================================================================
-# Environment Variable Validation Function
-# =============================================================================
-validate_env_vars() {
-    local missing_vars=()
-    local weak_vars=()
-    local has_errors=false
-
-    # Critical variables that must be set
-    local critical_vars=(
-        "N8N_ENCRYPTION_KEY"
-        "N8N_USER_MANAGEMENT_JWT_SECRET"
-        "N8N_RUNNERS_AUTH_TOKEN"
-        "POSTGRES_USER"
-        "POSTGRES_PASSWORD"
-        "POSTGRES_DB"
-    )
-
-    # Important variables that should be set
-    local important_vars=(
-        "DOMAIN_NAME"
-        "SUBDOMAIN"
-        "GENERIC_TIMEZONE"
-    )
-
-    # Optional but recommended
-    local recommended_vars=(
-        "N8N_VERSION"
-    )
-
-    echo -e "${BLUE}Validating environment variables...${NC}"
-    echo ""
-
-    # Check critical variables
-    for var in "${critical_vars[@]}"; do
-        if [ -z "${!var:-}" ]; then
-            missing_vars+=("$var")
-            has_errors=true
-        elif [ "${!var}" = "change_me" ] || [ "${!var}" = "changeme" ]; then
-            weak_vars+=("$var")
-            has_errors=true
-        fi
-    done
-
-    # Check important variables
-    for var in "${important_vars[@]}"; do
-        if [ -z "${!var:-}" ]; then
-            echo -e "  ${YELLOW}⚠${NC} $var is not set (recommended)"
-        fi
-    done
-
-    # Report critical issues
-    if [ ${#missing_vars[@]} -gt 0 ]; then
-        echo -e "${RED}✗ Critical variables missing:${NC}"
-        for var in "${missing_vars[@]}"; do
-            echo -e "  ${RED}•${NC} $var"
-        done
-        echo ""
-    fi
-
-    if [ ${#weak_vars[@]} -gt 0 ]; then
-        echo -e "${RED}✗ Security issue - default values detected:${NC}"
-        for var in "${weak_vars[@]}"; do
-            echo -e "  ${RED}•${NC} $var is set to 'change_me' (INSECURE!)"
-        done
-        echo ""
-    fi
-
-    # Report status
-    if [ "$has_errors" = true ]; then
-        echo -e "${RED}Environment validation failed!${NC}"
-        echo -e ""
-        echo -e "Please update your .env file with proper values:"
-        echo -e "  ${CYAN}nano .env${NC}"
-        echo -e ""
-        echo -e "Reference: .env.sample for required variables"
-        return 1
-    else
-        echo -e "${GREEN}✓${NC} All critical environment variables are set"
-        echo ""
-        return 0
-    fi
-}
-
-echo -e "${BLUE}==============================================================================${NC}"
-echo -e "${BLUE}n8n Deployment Script${NC}"
-echo -e "${BLUE}==============================================================================${NC}"
-echo ""
-
-# Check if we're in the right directory
-if [ ! -f "docker-compose.yml" ]; then
-    echo -e "${RED}✗ docker-compose.yml not found${NC}"
-    echo -e "Please run this script from the project root directory"
+# Validate environment
+validate_env_vars
+env_status=$?
+if [[ $env_status -eq 2 ]]; then
     exit 1
 fi
 
-# Load environment variables and validate
-if [ -f ".env" ]; then
-    set -a
-    source .env
-    set +a
+require_docker
 
-    if ! validate_env_vars; then
-        exit 1
-    fi
-else
-    echo -e "${RED}✗ .env file not found${NC}"
-    echo -e "Please create a .env file (copy from .env.sample)"
-    exit 1
-fi
+log_header "n8n Deployment"
 
 # =============================================================================
-# Step 1: Git Pull (if enabled)
+# Step 1: Git Pull
 # =============================================================================
-if [ "$PULL_GIT" = true ]; then
-    echo -e "${BLUE}Step 1: Pulling latest changes from Git${NC}"
+if [[ "$PULL_GIT" == true ]]; then
+    log_info "Step 1: Pulling latest changes from Git"
 
-    # Check if we're in a git repository
-    if [ ! -d ".git" ]; then
-        echo -e "${YELLOW}⚠${NC} Not a git repository, skipping git pull"
+    if [[ ! -d ".git" ]]; then
+        log_warn "Not a git repository, skipping git pull"
     else
-        # Check for uncommitted changes
-        if [ -n "$(git status --porcelain)" ]; then
-            echo -e "${YELLOW}⚠${NC} Warning: You have uncommitted changes:"
+        if [[ -n "$(git status --porcelain)" ]]; then
+            log_warn "You have uncommitted changes:"
             git status --short
             echo ""
             read -p "Continue with deployment? (y/N) " -n 1 -r
             echo
             if [[ ! $REPLY =~ ^[Yy]$ ]]; then
-                echo -e "${RED}✗${NC} Deployment cancelled"
+                log_error "Deployment cancelled"
                 exit 1
             fi
         fi
 
-        # Store current commit
         BEFORE_COMMIT=$(git rev-parse --short HEAD)
         BEFORE_BRANCH=$(git rev-parse --abbrev-ref HEAD)
 
-        # Pull latest changes
         echo -e "Pulling from ${CYAN}$BEFORE_BRANCH${NC}..."
         if git pull origin "$BEFORE_BRANCH"; then
             AFTER_COMMIT=$(git rev-parse --short HEAD)
-
-            if [ "$BEFORE_COMMIT" = "$AFTER_COMMIT" ]; then
-                echo -e "${GREEN}✓${NC} Already up to date (${CYAN}$AFTER_COMMIT${NC})"
+            if [[ "$BEFORE_COMMIT" == "$AFTER_COMMIT" ]]; then
+                log_success "Already up to date (${CYAN}$AFTER_COMMIT${NC})"
             else
-                echo -e "${GREEN}✓${NC} Updated from ${CYAN}$BEFORE_COMMIT${NC} to ${CYAN}$AFTER_COMMIT${NC}"
+                log_success "Updated from ${CYAN}$BEFORE_COMMIT${NC} to ${CYAN}$AFTER_COMMIT${NC}"
                 echo ""
-                echo -e "${BLUE}Changes:${NC}"
+                log_info "Changes:"
                 git log --oneline --graph "$BEFORE_COMMIT..$AFTER_COMMIT"
             fi
         else
-            echo -e "${RED}✗${NC} Git pull failed"
+            log_error "Git pull failed"
             exit 1
         fi
     fi
     echo ""
 else
-    echo -e "${YELLOW}⊙${NC} Skipping git pull"
+    log_warn "Skipping git pull"
     echo ""
 fi
 
 # =============================================================================
-# Step 2: Backup (if enabled)
+# Step 2: Backup
 # =============================================================================
-if [ "$CREATE_BACKUP" = true ]; then
-    echo -e "${BLUE}Step 2: Creating pre-deployment backup${NC}"
+if [[ "$CREATE_BACKUP" == true ]]; then
+    log_info "Step 2: Creating pre-deployment backup"
 
-    if [ -f "./scripts/backup.sh" ]; then
+    if [[ -f "./scripts/backup.sh" ]]; then
         BACKUP_DIR="./backups/pre-deploy-$(date +%Y-%m-%d-%H%M%S)"
         bash ./scripts/backup.sh "$BACKUP_DIR"
-        echo -e "${GREEN}✓${NC} Backup created at ${CYAN}$BACKUP_DIR${NC}"
+        log_success "Backup created at ${CYAN}$BACKUP_DIR${NC}"
     else
-        echo -e "${YELLOW}⚠${NC} Backup script not found, skipping backup"
+        log_warn "Backup script not found, skipping backup"
     fi
     echo ""
 else
-    echo -e "${YELLOW}⊙${NC} Skipping backup"
+    log_warn "Skipping backup"
     echo ""
 fi
 
 # =============================================================================
 # Step 3: Pull Latest Docker Images
 # =============================================================================
-echo -e "${BLUE}Step 3: Pulling latest Docker images${NC}"
-docker compose pull
-echo -e "${GREEN}✓${NC} Docker images updated"
+log_info "Step 3: Pulling latest Docker images"
+dc pull
+log_success "Docker images updated"
 echo ""
 
 # =============================================================================
-# Step 4: Version Verification
+# Step 4: Version Check
 # =============================================================================
-echo -e "${BLUE}Step 4: Verifying version synchronization${NC}"
-N8N_IMAGE=$(docker compose config | grep -A 1 "^  n8n:" | grep "image:" | awk '{print $2}')
-RUNNER_IMAGE=$(docker compose config | grep -A 1 "^  n8n-task-runner:" | grep "image:" | awk '{print $2}')
-
-N8N_VERSION=$(echo "$N8N_IMAGE" | cut -d: -f2)
-RUNNER_VERSION=$(echo "$RUNNER_IMAGE" | cut -d: -f2)
-
-if [ "$N8N_VERSION" != "$RUNNER_VERSION" ]; then
-    echo -e "${RED}✗${NC} Version mismatch detected!"
-    echo -e "   ${YELLOW}n8n version:${NC} $N8N_VERSION"
-    echo -e "   ${YELLOW}Task runner version:${NC} $RUNNER_VERSION"
-    echo -e ""
-    echo -e "${RED}ERROR: n8n and task runner versions MUST match for compatibility.${NC}"
-    echo -e "Please check your .env file and ensure N8N_VERSION is set correctly."
-    exit 1
-fi
-
-echo -e "${GREEN}✓${NC} n8n and task runner versions match: ${CYAN}$N8N_VERSION${NC}"
-echo ""
+log_info "Step 4: Verifying version synchronization"
+check_version_sync
 
 # =============================================================================
 # Step 5: Restart Services
 # =============================================================================
-echo -e "${BLUE}Step 5: Restarting services with new configuration${NC}"
-docker compose up -d --remove-orphans --no-build
-echo -e "${GREEN}✓${NC} Services restarted"
+log_info "Step 5: Restarting services with new images"
+dc up -d --remove-orphans --no-build
+log_success "Services restarted"
 echo ""
 
 # =============================================================================
-# Step 6: Wait for Services to Start
+# Step 6: Health Wait
 # =============================================================================
-echo -e "${BLUE}Step 6: Waiting for services to become healthy${NC}"
-echo -e "This may take 30-60 seconds..."
-echo ""
-
-# Wait a bit for services to start
-sleep 10
-
-# Check service health
-SERVICES=("postgres" "redis" "n8n")
+log_info "Step 6: Waiting for services to become healthy"
 ALL_HEALTHY=true
-MAX_WAIT=60
-ELAPSED=0
-
-while [ $ELAPSED -lt $MAX_WAIT ]; do
-    ALL_READY=true
-
-    for service in "${SERVICES[@]}"; do
-        HEALTH=$(docker compose ps "$service" --format "{{.Health}}" 2>/dev/null || echo "unknown")
-
-        if [[ "$HEALTH" != "healthy" ]]; then
-            ALL_READY=false
-            echo -e "  ${YELLOW}⊙${NC} Waiting for $service to be healthy... (${ELAPSED}s)"
-            break
-        fi
-    done
-
-    if [ "$ALL_READY" = true ]; then
-        break
-    fi
-
-    sleep 5
-    ELAPSED=$((ELAPSED + 5))
-done
-
-echo ""
-for service in "${SERVICES[@]}"; do
-    HEALTH=$(docker compose ps "$service" --format "{{.Health}}" 2>/dev/null || echo "unknown")
-
-    if [[ "$HEALTH" == "healthy" ]]; then
-        echo -e "  ${GREEN}✓${NC} $service is healthy"
-    elif [[ "$HEALTH" == "starting" ]]; then
-        echo -e "  ${YELLOW}⊙${NC} $service is still starting"
-        ALL_HEALTHY=false
-    else
-        echo -e "  ${RED}✗${NC} $service health: $HEALTH"
-        ALL_HEALTHY=false
-    fi
-done
-echo ""
+if ! wait_for_healthy 60; then
+    ALL_HEALTHY=false
+fi
 
 # =============================================================================
-# Step 7: Cleanup Old Images
+# Step 7: Image Prune
 # =============================================================================
-echo -e "${BLUE}Step 7: Cleaning up old Docker images${NC}"
+log_info "Step 7: Cleaning up old Docker images"
 docker image prune -f >/dev/null 2>&1
-echo -e "${GREEN}✓${NC} Old images removed"
+log_success "Old images removed"
 echo ""
 
 # =============================================================================
-# Step 8: Health Check (if enabled)
+# Step 8: Health Check
 # =============================================================================
-if [ "$RUN_HEALTH_CHECK" = true ]; then
-    echo -e "${BLUE}Step 8: Running post-deployment health check${NC}"
+if [[ "$RUN_HEALTH_CHECK" == true ]]; then
+    log_info "Step 8: Running post-deployment health check"
     echo ""
 
-    if [ -f "./scripts/health-check.sh" ]; then
-        bash ./scripts/health-check.sh
+    if [[ -f "./scripts/health-check.sh" ]]; then
+        bash ./scripts/health-check.sh || true
     else
-        echo -e "${YELLOW}⚠${NC} Health check script not found"
+        log_warn "Health check script not found"
     fi
 else
-    echo -e "${YELLOW}⊙${NC} Skipping health check"
+    log_warn "Skipping health check"
     echo ""
 fi
 
 # =============================================================================
-# Deployment Summary
+# Summary
 # =============================================================================
 echo ""
-echo -e "${BLUE}==============================================================================${NC}"
-if [ "$ALL_HEALTHY" = true ]; then
-    echo -e "${GREEN}✓ Deployment Complete!${NC}"
-    echo -e ""
+if [[ "$ALL_HEALTHY" == true ]]; then
+    log_header "Deployment Complete!"
     echo -e "All services are running and healthy"
-    if [ "$PULL_GIT" = true ] && [ -n "${AFTER_COMMIT:-}" ] && [ "$BEFORE_COMMIT" != "${AFTER_COMMIT:-}" ]; then
-        echo -e "Deployed version: ${CYAN}${AFTER_COMMIT}${NC}"
-    fi
-    echo -e "n8n version: ${CYAN}$N8N_VERSION${NC}"
 else
+    echo -e "${BLUE}==============================================================================${NC}"
     echo -e "${YELLOW}⚠ Deployment Complete (with warnings)${NC}"
-    echo -e ""
+    echo -e "${BLUE}==============================================================================${NC}"
+    echo ""
     echo -e "Some services may still be starting up."
     echo -e "Run ${CYAN}./scripts/health-check.sh${NC} in a few minutes to verify."
 fi
-echo -e "${BLUE}==============================================================================${NC}"
+
+if [[ "$PULL_GIT" == true ]] && [[ -n "${AFTER_COMMIT:-}" ]] && [[ "${BEFORE_COMMIT:-}" != "${AFTER_COMMIT:-}" ]]; then
+    echo -e "Deployed version: ${CYAN}${AFTER_COMMIT}${NC}"
+fi

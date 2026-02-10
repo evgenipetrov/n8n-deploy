@@ -66,11 +66,14 @@ find backups/ -type d -mtime +30 -exec rm -rf {} +
 
 **Update Docker Images:**
 ```bash
-# Automated update with backup
-./scripts/update.sh
+# Full deploy pipeline (git pull, backup, image pull, restart, health check)
+./scripts/deploy.sh
 
-# Update without backup (not recommended)
-./scripts/update.sh --no-backup
+# Deploy without backup (not recommended)
+./scripts/deploy.sh --no-backup
+
+# Deploy with Ollama profile
+./scripts/deploy.sh --profile gpu-nvidia
 ```
 
 **Manual Update Process:**
@@ -207,7 +210,7 @@ sudo apt update && sudo apt upgrade -y
 sudo apt install docker-ce docker-ce-cli containerd.io
 
 # Update all images
-./scripts/update.sh
+./scripts/deploy.sh
 ```
 
 ### Capacity Planning
