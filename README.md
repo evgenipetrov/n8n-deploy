@@ -179,11 +179,6 @@ n8n-deploy/
 ├── postgres/
 │   └── init/
 │       └── 01-create-indexes.sql  # Performance indexes
-└── agent-os/                    # Product planning (optional)
-    └── product/
-        ├── mission.md           # Product vision
-        ├── roadmap.md           # Feature roadmap
-        └── tech-stack.md        # Technology stack
 ```
 
 ## 🔒 Security

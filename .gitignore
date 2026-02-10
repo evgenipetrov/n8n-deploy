@@ -79,12 +79,6 @@ backups/
 *.csr
 !caddy/Caddyfile
 
-# Agent OS Working Files
-# -----------------------------------------------------------------------------
-# Spec folders are working documents - decide if you want to keep them in git
-agent-os/specs/
-agent-os/.cache/
-
 # Custom Docker Build Context
 # -----------------------------------------------------------------------------
 # Keep Dockerfile, ignore build artifacts
