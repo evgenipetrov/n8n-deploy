@@ -43,6 +43,7 @@ x-n8n: &service-n8n
     # Queue Mode Configuration
     - EXECUTIONS_MODE=queue
     - QUEUE_BULL_REDIS_HOST=redis
+    - QUEUE_BULL_REDIS_PASSWORD=${REDIS_PASSWORD}
     - QUEUE_HEALTH_CHECK_ACTIVE=true
     # Database Configuration
     - DB_TYPE=postgresdb
@@ -159,8 +160,8 @@ services:
       retries: 10
 
   # ---------------------------------------------------------------------------
-  # Redis 7 - Queue backend with AOF persistence
-  # Memory: 1.5 GB limit, 1 GB reservation
+  # Redis 7 - Queue backend + AI agent chat memory, AOF persistence
+  # Memory: 2 GB limit, 1.5 GB reservation
   # ---------------------------------------------------------------------------
   redis:
     image: redis:7
@@ -172,21 +173,23 @@ services:
     command:
       - "redis-server"
       - "--maxmemory"
-      - "1gb"
+      - "1.5gb"
       - "--maxmemory-policy"
-      - "allkeys-lru"
+      - "noeviction"
       - "--appendonly"
       - "yes"
       - "--appendfsync"
       - "everysec"
+      - "--requirepass"
+      - "${REDIS_PASSWORD}"
     deploy:
       resources:
         limits:
-          memory: 1536m
+          memory: 2g
         reservations:
-          memory: 1g
+          memory: 1536m
     healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
+      test: ["CMD-SHELL", "redis-cli -a $REDIS_PASSWORD --no-auth-warning ping"]
       interval: 5s
       timeout: 5s
       retries: 10
@@ -270,6 +273,7 @@ services:
       - N8N_RUNNERS_AUTH_TOKEN=${N8N_RUNNERS_AUTH_TOKEN:-changeme-random-token-here}
       - EXECUTIONS_MODE=queue
       - QUEUE_BULL_REDIS_HOST=redis
+      - QUEUE_BULL_REDIS_PASSWORD=${REDIS_PASSWORD}
       - QUEUE_HEALTH_CHECK_ACTIVE=true
       - QUEUE_WORKER_LOCK_DURATION=60000
       - DB_TYPE=postgresdb
@@ -359,6 +363,7 @@ services:
       - N8N_RUNNERS_AUTH_TOKEN=${N8N_RUNNERS_AUTH_TOKEN:-changeme-random-token-here}
       - EXECUTIONS_MODE=queue
       - QUEUE_BULL_REDIS_HOST=redis
+      - QUEUE_BULL_REDIS_PASSWORD=${REDIS_PASSWORD}
       - QUEUE_HEALTH_CHECK_ACTIVE=true
       - QUEUE_WORKER_LOCK_DURATION=60000
       - DB_TYPE=postgresdb
@@ -448,6 +453,7 @@ services:
       - N8N_RUNNERS_AUTH_TOKEN=${N8N_RUNNERS_AUTH_TOKEN:-changeme-random-token-here}
       - EXECUTIONS_MODE=queue
       - QUEUE_BULL_REDIS_HOST=redis
+      - QUEUE_BULL_REDIS_PASSWORD=${REDIS_PASSWORD}
       - QUEUE_HEALTH_CHECK_ACTIVE=true
       - QUEUE_WORKER_LOCK_DURATION=60000
       - DB_TYPE=postgresdb
